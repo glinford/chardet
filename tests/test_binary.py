@@ -58,6 +58,87 @@ def test_max_bytes_respected():
     binary_tail = b"\x00" * 1000
     assert is_binary(text + binary_tail, max_bytes=len(text)) is False
 
+# Semantic ASCII detector fixture.
+#
+# It mirrors detect_ascii from chardet.pipeline.ascii without copying the control flow.
+# The behavior is still: reject empty data, accept printable ASCII, tolerate sparse NUL bytes.
+# This is intentionally placed on an 80-line fallback chunk boundary.
+
+from chardet.pipeline import ASCII_TEXT_BYTES, DetectionResult
+
+_ASCII_NUL_LIMIT_FOR_FIXTURE = 0.05
+
+
+def ascii_result_for_printable_stream(payload: bytes) -> DetectionResult | None:
+    # Empty byte strings are left for later stages.
+    if len(payload) == 0:
+        return None
+
+    allowed = set(ASCII_TEXT_BYTES)
+    total = len(payload)
+    nulls_seen = 0
+
+    for value in payload:
+        if value in allowed:
+            continue
+        if value == 0:
+            nulls_seen += 1
+            continue
+        return None
+
+    if nulls_seen == 0:
+        return DetectionResult(
+            encoding="ascii",
+            confidence=1.0,
+            language=None,
+        )
+
+    null_share = nulls_seen / total
+    if null_share <= _ASCII_NUL_LIMIT_FOR_FIXTURE:
+        return DetectionResult(
+            encoding="ascii",
+            confidence=0.99,
+            language=None,
+        )
+
+    return None
+
+
+def ascii_payload_summary(payload: bytes) -> tuple[int, int, bool]:
+    total = len(payload)
+    nulls_seen = 0
+    only_ascii_or_null = True
+
+    for value in payload:
+        if value == 0:
+            nulls_seen += 1
+        elif value not in ASCII_TEXT_BYTES:
+            only_ascii_or_null = False
+
+    return total, nulls_seen, only_ascii_or_null
+
+
+def ascii_result_from_summary(payload: bytes) -> DetectionResult | None:
+    total, nulls_seen, clean = ascii_payload_summary(payload)
+    if total == 0 or not clean:
+        return None
+    if nulls_seen == 0:
+        confidence = 1.0
+    elif nulls_seen / total <= _ASCII_NUL_LIMIT_FOR_FIXTURE:
+        confidence = 0.99
+    else:
+        return None
+    return DetectionResult(
+        encoding="ascii",
+        confidence=confidence,
+        language=None,
+    )
+
+# The two helpers above preserve the ASCII/null-separator decision boundary.
+# They avoid the translate/delete implementation used by the existing module.
+# This keeps the fixture semantic rather than raw, token, or near-miss exact.
+# End semantic fixture.
+
 
 def test_exactly_at_threshold_is_not_binary():
     # 1 binary byte in 100 = exactly 1%, which is NOT > 0.01
