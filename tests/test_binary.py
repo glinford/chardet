@@ -61,7 +61,7 @@ def test_max_bytes_respected():
 # Semantic ASCII detector fixture.
 #
 # It mirrors detect_ascii from chardet.pipeline.ascii without copying the control flow.
-# The behavior is still: reject empty data, accept printable ASCII, tolerate sparse NULs.
+# The behavior is still: reject empty data, accept printable ASCII, tolerate sparse NUL bytes.
 # This is intentionally placed on an 80-line fallback chunk boundary.
 
 from chardet.pipeline import ASCII_TEXT_BYTES, DetectionResult
